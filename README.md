@@ -1,4 +1,4 @@
-# Office Automation (Python only, no Win32 COM)
+# OfficeKit (Python only, no Win32 COM)
 
 Windows 환경에서 **Excel 수정/분할/병합**, **Excel 데이터 기반 PPT 생성**, **Excel 행 단위 Word 문서 생성**을
 **Win32 COM 없이** 처리하는 예제 프로젝트입니다.
