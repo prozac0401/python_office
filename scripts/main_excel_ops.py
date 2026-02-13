@@ -10,8 +10,8 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 import argparse
 
-from office_automation.io_excel import read_excel_to_df, write_df_to_excel, split_excel_by_column, merge_excels_rows
-from office_automation.transform import add_total
+from officekit.io_excel import read_excel_to_df, write_df_to_excel, split_excel_by_column, merge_excels_rows
+from officekit.transform import add_total
 
 
 def cmd_modify(args) -> int:

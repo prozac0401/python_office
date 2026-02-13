@@ -9,7 +9,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 import argparse
 
-from office_automation.render_word import create_word_docs_from_excel
+from officekit.render_word import create_word_docs_from_excel
 
 
 def main() -> int:

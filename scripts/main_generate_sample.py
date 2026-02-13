@@ -9,7 +9,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 import argparse
 
-from office_automation.io_excel import generate_sample_excel
+from officekit.io_excel import generate_sample_excel
 
 
 def main() -> int:
