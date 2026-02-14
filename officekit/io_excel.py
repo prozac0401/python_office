@@ -6,7 +6,21 @@ from typing import Iterable
 import random
 import pandas as pd
 
-from .utils import ensure_dir
+from .utils import ensure_dir, safe_filename
+
+
+def _next_available_path(path: Path) -> Path:
+    """Return a non-conflicting path by appending _N when needed."""
+    if not path.exists():
+        return path
+    stem = path.stem
+    suffix = path.suffix
+    idx = 2
+    while True:
+        candidate = path.with_name(f"{stem}_{idx}{suffix}")
+        if not candidate.exists():
+            return candidate
+        idx += 1
 
 def read_excel_to_df(path: str | Path, sheet_name: int | str = 0) -> pd.DataFrame:
     """Read an Excel sheet into a DataFrame."""
@@ -40,8 +54,9 @@ def split_excel_by_column(
     paths: list[Path] = []
     for key, sub in df.groupby(column, dropna=False):
         key_str = "NA" if pd.isna(key) else str(key)
-        name = f"{prefix}{key_str}.xlsx" if prefix else f"{key_str}.xlsx"
-        out_path = out_dir / name
+        base_name = f"{prefix}{key_str}" if prefix else key_str
+        name = safe_filename(base_name) + ".xlsx"
+        out_path = _next_available_path(out_dir / name)
         write_df_to_excel(sub, out_path, sheet_name="Data")
         paths.append(out_path)
     return paths

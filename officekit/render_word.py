@@ -8,6 +8,20 @@ from .io_excel import read_excel_to_df
 from .utils import ensure_dir, safe_filename
 
 
+def _next_available_path(path: Path) -> Path:
+    """Return a non-conflicting path by appending _N when needed."""
+    if not path.exists():
+        return path
+    stem = path.stem
+    suffix = path.suffix
+    idx = 2
+    while True:
+        candidate = path.with_name(f"{stem}_{idx}{suffix}")
+        if not candidate.exists():
+            return candidate
+        idx += 1
+
+
 def _normalize_ctx(df: pd.DataFrame, row: pd.Series) -> dict[str, object]:
     """Convert a dataframe row into a template context dict."""
     ctx: dict[str, object] = {}
@@ -78,17 +92,18 @@ def _render_with_template(template_docx: Path, ctx: dict[str, object], out_path:
       1) If `docxtpl` is installed, use it (more robust templating).
       2) Otherwise, do a simple {{var}} text replacement using python-docx.
     """
-    # 1) Try docxtpl
+    # 1) Try docxtpl when available.
+    # If docxtpl is installed but rendering fails, surface the error.
     try:
         from docxtpl import DocxTemplate  # type: ignore
+    except ImportError:
+        DocxTemplate = None  # type: ignore[assignment]
 
+    if DocxTemplate is not None:
         tpl = DocxTemplate(str(template_docx))
         tpl.render(ctx)
         tpl.save(str(out_path))
         return
-    except Exception:
-        # fall back to simple replacement below
-        pass
 
     # 2) Simple replacement (no extra deps)
     from docx import Document  # lazy import
@@ -158,7 +173,7 @@ def create_word_docs_from_excel(
             if col in ctx and str(ctx[col]).strip():
                 parts.append(str(ctx[col]))
         fname = safe_filename("_".join(parts) if parts else "row") + ".docx"
-        out_path = out_dir / fname
+        out_path = _next_available_path(out_dir / fname)
 
         if tpl_path is not None:
             _render_with_template(tpl_path, ctx, out_path)

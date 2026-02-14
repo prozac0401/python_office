@@ -12,6 +12,14 @@ import argparse
 from officekit.render_word import create_word_docs_from_excel
 
 
+def parse_sheet_arg(value: str) -> int | str:
+    """Interpret integer-like values as sheet index, otherwise sheet name."""
+    v = value.strip()
+    if v and v.lstrip("+-").isdigit():
+        return int(v)
+    return value
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Generate one Word doc (DOCX) per Excel row (no COM).")
     parser.add_argument("--input", required=True, help="Input xlsx")
@@ -20,7 +28,7 @@ def main() -> int:
         default=str(Path("outputs") / "word_docs"),
         help="Output directory for docx files",
     )
-    parser.add_argument("--sheet", default=0, help="Sheet name or index")
+    parser.add_argument("--sheet", default=0, type=parse_sheet_arg, help="Sheet name or index")
     parser.add_argument(
         "--template",
         default=str(PROJECT_ROOT / "templates" / "word_template.docx"),

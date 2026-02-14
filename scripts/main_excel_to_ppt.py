@@ -12,11 +12,19 @@ import argparse
 from officekit.render_ppt import create_ppt_from_excel
 
 
+def parse_sheet_arg(value: str) -> int | str:
+    """Interpret integer-like values as sheet index, otherwise sheet name."""
+    v = value.strip()
+    if v and v.lstrip("+-").isdigit():
+        return int(v)
+    return value
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Create a PPTX report from an Excel file (data-driven; no COM).")
     parser.add_argument("--input", required=True, help="Input xlsx")
     parser.add_argument("--output", default=str(Path("outputs") / "report.pptx"), help="Output pptx")
-    parser.add_argument("--sheet", default=0, help="Sheet name or index")
+    parser.add_argument("--sheet", default=0, type=parse_sheet_arg, help="Sheet name or index")
     parser.add_argument("--title", default="Excel to PPT Report", help="Presentation title")
     parser.add_argument("--group-col", default="Category", help="Column to summarize for chart")
     parser.add_argument("--qty-col", default="Qty")

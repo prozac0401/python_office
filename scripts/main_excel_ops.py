@@ -14,6 +14,14 @@ from officekit.io_excel import read_excel_to_df, write_df_to_excel, split_excel_
 from officekit.transform import add_total
 
 
+def parse_sheet_arg(value: str) -> int | str:
+    """Interpret integer-like values as sheet index, otherwise sheet name."""
+    v = value.strip()
+    if v and v.lstrip("+-").isdigit():
+        return int(v)
+    return value
+
+
 def cmd_modify(args) -> int:
     df = read_excel_to_df(args.input, sheet_name=args.sheet)
     df2 = add_total(df, qty_col=args.qty_col, unit_price_col=args.unit_col, out_col=args.out_col)
@@ -71,7 +79,7 @@ def main() -> int:
     p1 = sub.add_parser("modify", help="Add a Total column and write a new Excel file.")
     p1.add_argument("--input", required=True)
     p1.add_argument("--output", required=True)
-    p1.add_argument("--sheet", default=0)
+    p1.add_argument("--sheet", default=0, type=parse_sheet_arg)
     p1.add_argument("--qty-col", default="Qty")
     p1.add_argument("--unit-col", default="UnitPrice")
     p1.add_argument("--out-col", default="Total")
@@ -82,7 +90,7 @@ def main() -> int:
     p2.add_argument("--input", required=True)
     p2.add_argument("--output-dir", required=True)
     p2.add_argument("--column", required=True)
-    p2.add_argument("--sheet", default=0)
+    p2.add_argument("--sheet", default=0, type=parse_sheet_arg)
     p2.add_argument("--prefix", default="")
     p2.set_defaults(func=cmd_split)
 
@@ -90,7 +98,7 @@ def main() -> int:
     p3 = sub.add_parser("merge", help="Merge multiple Excel files by stacking rows.")
     p3.add_argument("--inputs", nargs="+", required=True, help="Input xlsx paths (wildcards like *.xlsx are OK).")
     p3.add_argument("--output", required=True)
-    p3.add_argument("--sheet", default=0)
+    p3.add_argument("--sheet", default=0, type=parse_sheet_arg)
     p3.add_argument("--no-source", action="store_true", help="Do not add a SourceFile column.")
     p3.set_defaults(func=cmd_merge)
 
