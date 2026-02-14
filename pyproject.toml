@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "officekit"
 version = "0.1.0"
-description = "Excel / PPT / Word utilities (no Win32 COM)."
+description = "Excel / PPT / Word 자동화 유틸리티 (Win32 COM 미사용)."
 readme = "README.md"
 license = { text = "MIT" }
 authors = [ { name = "공튼이", email = "wonseokie@hotmail.com" } ]

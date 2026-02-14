@@ -6,7 +6,7 @@ with open("README.md", "r", encoding="utf-8") as f:
 setup(
     name="officekit",
     version="0.1.0",
-    description="Excel / PPT / Word utilities (no Win32 COM).",
+    description="Excel / PPT / Word 자동화 유틸리티 (Win32 COM 미사용).",
     long_description=long_description,
     long_description_content_type="text/markdown",
     license="MIT",

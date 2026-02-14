@@ -3,7 +3,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-# Allow `python scripts/...` to import the local package without installation
+# `python scripts/...` 실행 시, 설치 없이 로컬 패키지를 import 가능하게 한다.
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
@@ -13,7 +13,7 @@ from officekit.render_ppt import create_ppt_from_excel
 
 
 def parse_sheet_arg(value: str) -> int | str:
-    """Interpret integer-like values as sheet index, otherwise sheet name."""
+    """정수처럼 보이면 시트 인덱스로, 아니면 시트 이름으로 해석한다."""
     v = value.strip()
     if v and v.lstrip("+-").isdigit():
         return int(v)
@@ -21,18 +21,18 @@ def parse_sheet_arg(value: str) -> int | str:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Create a PPTX report from an Excel file (data-driven; no COM).")
-    parser.add_argument("--input", required=True, help="Input xlsx")
-    parser.add_argument("--output", default=str(Path("outputs") / "report.pptx"), help="Output pptx")
-    parser.add_argument("--sheet", default=0, type=parse_sheet_arg, help="Sheet name or index")
-    parser.add_argument("--title", default="Excel to PPT Report", help="Presentation title")
-    parser.add_argument("--group-col", default="Category", help="Column to summarize for chart")
-    parser.add_argument("--qty-col", default="Qty")
-    parser.add_argument("--unit-col", default="UnitPrice")
+    parser = argparse.ArgumentParser(description="Excel 파일에서 데이터 기반 PPTX 보고서를 생성합니다(COM 미사용).")
+    parser.add_argument("--input", required=True, help="입력 xlsx 경로")
+    parser.add_argument("--output", default=str(Path("outputs") / "report.pptx"), help="출력 pptx 경로")
+    parser.add_argument("--sheet", default=0, type=parse_sheet_arg, help="시트 이름 또는 인덱스")
+    parser.add_argument("--title", default="엑셀 보고서", help="프레젠테이션 제목")
+    parser.add_argument("--group-col", default="Category", help="차트 요약 기준 컬럼(예: Category 또는 분류)")
+    parser.add_argument("--qty-col", default="Qty", help="수량 컬럼명(예: Qty 또는 수량)")
+    parser.add_argument("--unit-col", default="UnitPrice", help="단가 컬럼명(예: UnitPrice 또는 단가)")
     parser.add_argument(
         "--template",
         default=str(PROJECT_ROOT / "templates" / "ppt_template.pptx"),
-        help="Base PPTX template (optional).",
+        help="기반 PPTX 템플릿(선택, TABLE_AREA/CHART_AREA 또는 표_영역/차트_영역 지원)",
     )
     args = parser.parse_args()
 
@@ -49,7 +49,7 @@ def main() -> int:
         unit_price_col=args.unit_col,
         template_pptx=template_pptx,
     )
-    print(f"Wrote PPTX: {out}")
+    print(f"PPTX 생성 완료: {out}")
     return 0
 
 
