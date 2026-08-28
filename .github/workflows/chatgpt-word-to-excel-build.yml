@@ -3,6 +3,7 @@ name: Build WordToExcel Windows EXE
 on:
   push:
     branches:
+      - main
       - chatgpt-word-to-excel-build-20260828
   workflow_dispatch:
 
