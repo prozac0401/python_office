@@ -1,0 +1,60 @@
+l}")
++                log(f"  PNG 오류: {detail}")
++
++        if settings.export_pptx:
++            pptx_path = unique_path(output_dir / f"{base_name}.pptx")
++            try:
++                log(f"  PPTX 출력 시작: {pptx_path.name} [SaveCopyAs]")
++                export_pptx_copy_com(presentation, pptx_path)
++                log(f"  PPTX 저장: {pptx_path.name} [SaveCopyAs]")
++            except Exception as e:
++                detail = describe_com_error(e)
++                format_errors.append(f"PPTX: {detail}")
++                log(f"  PPTX 오류: {detail}")
++
++        if format_errors:
++            raise RuntimeError("일부 출력 형식 생성 실패 | " + " | ".join(format_errors))
+     finally:
+         if presentation is not None:
+             try:
+@@ -416,10 +563,9 @@
+         log_cb("PowerPoint COM 시작 중...")
+         try:
+             ppt_app = win32com.client.DispatchEx("PowerPoint.Application")
+-            # 핵심: 숨김 모드에서는 ppt_app.Visible=False를 절대 설정하지 않습니다.
+-            # 보이기 옵션을 사용한 경우에만 msoTrue로 명시합니다.
+-            if settings.keep_powerpoint_visible:
+-                ppt_app.Visible = MSO_TRUE
++            # PowerPoint 내보내기 안정성을 위해 항상 실제 Application/DocumentWindow를 사용합니다.
++            # 체크 해제 시에는 숨기는 대신 공식 ppWindowMinimized 상태로 즉시 최소화합니다.
++            ppt_app.Visible = MSO_TRUE
+             try:
+                 ppt_app.DisplayAlerts = PP_ALERTS_NONE
+             except Exception:
+@@ -430,7 +576,7 @@
+                 ppt_version = "unknown"
+             log_cb(
+                 f"PowerPoint COM 연결 완료: version={ppt_version} / "
+-                + ("창 표시 모드" if settings.keep_powerpoint_visible else "숨김 프레젠테이션 창 모드(WithWindow=False)")
++                + ("창 표시 모드" if settings.keep_powerpoint_visible else "백그라운드 최소화 모드(WithWindow=True + ppWindowMinimized)")
+             )
+         except Exception as e:
+             raise RuntimeError(
+@@ -505,7 +651,7 @@
+         self.png_lock_ratio_var = tk.BooleanVar(value=True)
+         self.png_ratio = 1240 / 1754
+         self._syncing_png_size = False
+-        # PowerPoint 창 표시는 기본 해제. 숨김은 Application.Visible=False가 아니라 WithWindow=False로 처리합니다.
++        # PowerPoint 창 표시는 기본 해제. 안정성을 위해 실제 창은 생성하고 즉시 최소화합니다.
+         self.visible_var = tk.BooleanVar(value=False)
+ 
+         self._build_ui()
+@@ -529,7 +675,7 @@
+         notice.pack(fill="x", padx=14, pady=(0, 8))
+         ttk.Label(
+             notice,
+-            text="Windows + Microsoft PowerPoint + Excel이 필요합니다. 실행 중에는 템플릿/출력 파일을 열어두지 말고, PowerPoint 창 표시는 기본 해제되어 있으며 숨김 모드에서는 프레젠테이션 창만 WithWindow=False로 엽니다. 창 표시를 켠 경우 작업 중 PowerPoint 조작은 피해주세요. 파일명 중복은 자동으로 _2, _3 형식으로 회피합니다.",
++            text="Windows + Microsoft PowerPoint + Excel이 필요합니다. 실행 중에는 템플릿/출력 파일을 열어두지 말고, PowerPoint 창 표시는 기본 해제되어 있으며 백그라운드 모드에서는 실제 프레젠테이션 창을 연 뒤 즉시 최소화합니다. 창 표시를 켠 경우 작업 중 PowerPoint 조작은 피해주세요. 파일명 중복은 자동으로 _2, _3 형식으로 회피합니다.",
+             wraplength=820,
+             foreground="#7A3E00",
+         ).pack(anchor="w", padx=10, pady=7)
