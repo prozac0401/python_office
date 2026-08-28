@@ -1,0 +1,133 @@
+--- certificate_maker.py
++++ certificate_maker.py
+@@ -26,11 +26,17 @@
+ from tkinter.scrolledtext import ScrolledText
+ 
+ APP_TITLE = "인증서 자동 제작 도구"
+-APP_VERSION = "1.2.1"
++APP_VERSION = "1.2.3"
+ 
+-# PowerPoint SaveAs constants
+-PP_SAVE_AS_OPENXML_PRESENTATION = 24  # .pptx
+-PP_SAVE_AS_PDF = 32                   # .pdf
++# PowerPoint COM constants
++PP_SAVE_AS_OPENXML_PRESENTATION = 24  # ppSaveAsOpenXMLPresentation (.pptx)
++PP_FIXED_FORMAT_TYPE_PDF = 2          # ppFixedFormatTypePDF
++PP_FIXED_FORMAT_INTENT_PRINT = 2      # ppFixedFormatIntentPrint
++PP_PRINT_HANDOUT_HORIZONTAL_FIRST = 2 # ppPrintHandoutHorizontalFirst
++PP_PRINT_OUTPUT_SLIDES = 1            # ppPrintOutputSlides
++PP_PRINT_ALL = 1                      # ppPrintAll
++PP_WINDOW_NORMAL = 1                 # ppWindowNormal
++PP_WINDOW_MINIMIZED = 2              # ppWindowMinimized
+ PP_ALERTS_NONE = 1
+ MSO_FALSE = 0
+ MSO_TRUE = -1
+@@ -63,11 +69,38 @@
+     return Path(__file__).resolve().parent / relative_path
+ 
+ 
++def minimize_powerpoint_window(ppt_app, presentation=None) -> None:
++    """PowerPoint에는 실제 DocumentWindow를 유지하되 화면에서는 최소화합니다.
++
++    일부 PowerPoint/보안 환경은 WithWindow=False로 연 프레젠테이션에서 Save/Export
++    계열 COM 호출이 실패합니다. 따라서 백그라운드 모드도 WithWindow=True로 연 뒤
++    공식 WindowState=ppWindowMinimized를 사용합니다.
++    """
++    try:
++        ppt_app.Visible = MSO_TRUE
++    except Exception:
++        pass
++
++    if presentation is not None:
++        try:
++            if int(presentation.Windows.Count) > 0:
++                presentation.Windows(1).WindowState = PP_WINDOW_MINIMIZED
++        except Exception:
++            pass
++    try:
++        ppt_app.WindowState = PP_WINDOW_MINIMIZED
++    except Exception:
++        try:
++            ppt_app.ActiveWindow.WindowState = PP_WINDOW_MINIMIZED
++        except Exception:
++            pass
++
++
+ def get_pptx_aspect_ratio_com(pptx_path: Path) -> Optional[float]:
+-    """PowerPoint COM으로 템플릿을 숨김 창 상태로 열어 슬라이드 비율을 읽습니다.
++    """PowerPoint COM으로 템플릿을 열어 슬라이드 비율을 읽습니다.
+ 
+-    PPTX를 ZIP/XML로 직접 파싱하지 않습니다. PowerPoint.Application.Visible=False는
+-    사용하지 않고, Presentations.Open의 WithWindow=msoFalse만 사용합니다.
++    PPTX를 ZIP/XML로 직접 파싱하지 않습니다. 안정성을 위해 실제 DocumentWindow를
++    생성(WithWindow=True)한 뒤 즉시 최소화합니다.
+     """
+     if os.name != "nt":
+         return None
+@@ -83,8 +116,9 @@
+         pythoncom.CoInitialize()
+         initialized = True
+         ppt_app = win32com.client.DispatchEx("PowerPoint.Application")
+-        # 숨김 모드에서는 Application.Visible을 False로 설정하면 안 됩니다.
+-        presentation = ppt_app.Presentations.Open(str(pptx_path.resolve()), MSO_TRUE, MSO_FALSE, MSO_FALSE)
++        ppt_app.Visible = MSO_TRUE
++        presentation = ppt_app.Presentations.Open(str(pptx_path.resolve()), MSO_TRUE, MSO_FALSE, MSO_TRUE)
++        minimize_powerpoint_window(ppt_app, presentation)
+         slide_w = float(presentation.PageSetup.SlideWidth)
+         slide_h = float(presentation.PageSetup.SlideHeight)
+         if slide_w > 0 and slide_h > 0:
+@@ -322,43 +356,156 @@
+     return value
+ 
+ 
++def describe_com_error(exc: Exception) -> str:
++    """pywintypes.com_error를 포함한 COM 예외를 로그 친화적으로 표시합니다."""
++    parts = [str(exc)]
++    hresult = getattr(exc, "hresult", None)
++    if hresult is not None:
++        try:
++            parts.append(f"HRESULT=0x{(int(hresult) & 0xFFFFFFFF):08X}")
++        except Exception:
++            parts.append(f"HRESULT={hresult}")
++    excepinfo = getattr(exc, "excepinfo", None)
++    if excepinfo:
++        try:
++            source = excepinfo[1] if len(excepinfo) > 1 else None
++            description = excepinfo[2] if len(excepinfo) > 2 else None
++            scode = excepinfo[5] if len(excepinfo) > 5 else None
++            if source:
++                parts.append(f"source={source}")
++            if description:
++                parts.append(f"description={description}")
++            if scode is not None:
++                parts.append(f"scode={scode}")
++        except Exception:
++            pass
++    return " / ".join(dict.fromkeys(parts))
++
++
++def ensure_export_created(path: Path, label: str) -> None:
++    """COM 호출이 예외 없이 끝났지만 파일이 생성되지 않은 경우도 실패로 판정합니다."""
++    if not path.exists():
++        raise RuntimeError(f"{label} COM 호출은 완료됐지만 출력 파일이 생성되지 않았습니다: {path}")
++    try:
++        if path.stat().st_size <= 0:
++            raise RuntimeError(f"{label} 출력 파일의 크기가 0 byte입니다: {path}")
++    except OSError as e:
++        raise RuntimeError(f"{label} 출력 파일을 확인하지 못했습니다: {path} / {e}") from e
++
++
++def export_pdf_com(presentation, pdf_path: Path) -> None:
++    """PowerPoint의 고정 형식 내보내기 API로 PDF를 생성합니다.
++
++    SaveAs(ppSaveAsPDF)를 사용하지 않습니다. 일부 Office/보안 환경에서 SaveAs PDF가
++    실패하면서 이후 PNG 출력까지 중단되던 문제를 피하기 위함입니다.
++    """
++    # ExportAsFixedFormat의 PrintRange는 Office 버전에 따라 생략 시 Type mismatch가
++    # 발생할 수 있어 Nothing(None)을 포함한 전체 주요 인수를 명시합니다.
++    presentation.ExportAsFixedFormat(
++        str(pdf_path.resolve()),
++        PP_FIXED_FORMAT_TYPE_PDF,
++        PP_FIXED_FORMAT_INTENT_PRINT,
++        MSO_FALSE,
++        PP_PRINT_
