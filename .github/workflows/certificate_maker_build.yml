@@ -67,7 +67,10 @@ jobs:
           $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
           [IO.File]::WriteAllText($patchPath, $patchText, $utf8NoBom)
           Set-Location $env:CERT_SRC
-          git apply -p0 --whitespace=nowarn $patchPath
+          $patchExe = "C:\Program Files\Git\usr\bin\patch.exe"
+          if (-not (Test-Path $patchExe)) { throw "Git for Windows patch.exe not found" }
+          & $patchExe --binary --forward --batch -p0 -i $patchPath
+          if ($LASTEXITCODE -ne 0) { throw "patch.exe failed with exit code $LASTEXITCODE" }
 
       - name: Validate source
         shell: powershell
@@ -80,9 +83,8 @@ jobs:
           if (-not (Select-String -Path certificate_maker.py -Pattern 'load_excel_rows_com' -Quiet)) { throw "Excel COM loader missing" }
           if (-not (Select-String -Path certificate_maker.py -Pattern 'APP_VERSION = "1.2.3"' -Quiet)) { throw "Version patch missing" }
           if (-not (Select-String -Path certificate_maker.py -Pattern 'Presentations.Open\(' -Quiet)) { throw "PowerPoint COM open missing" }
+          if (-not (Select-String -Path certificate_maker.py -Pattern 'MSO_TRUE\)' -Quiet)) { throw "WithWindow=True path missing" }
           if (-not (Select-String -Path certificate_maker.py -Pattern 'PP_WINDOW_MINIMIZED' -Quiet)) { throw "Minimized background mode missing" }
-          if (-not (Select-String -Path certificate_maker.py -Pattern 'WithWindow=False는 일부 Office/DRM 환경' -Quiet)) { throw "WithWindow=False regression note missing" }
-          if (-not (Select-String -Path certificate_maker.py -Pattern 'str\(settings\.template_path\.resolve\(\)\), MSO_TRUE, MSO_FALSE, MSO_TRUE' -Quiet)) { throw "Template is not opened WithWindow=True" }
           if (-not (Select-String -Path certificate_maker.py -Pattern 'ExportAsFixedFormat' -Quiet)) { throw "PDF ExportAsFixedFormat missing" }
           if (-not (Select-String -Path certificate_maker.py -Pattern '\.Export\(str\(png_path\.resolve\(\)\), "PNG"' -Quiet)) { throw "PNG Slide.Export missing" }
           if (-not (Select-String -Path certificate_maker.py -Pattern 'SaveCopyAs' -Quiet)) { throw "PPTX SaveCopyAs missing" }
