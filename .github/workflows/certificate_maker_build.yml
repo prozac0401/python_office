@@ -1,0 +1,98 @@
+name: Build CertificateMaker v1.2 Windows EXE
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          architecture: 'x64'
+
+      - name: Restore ChatGPT build payload
+        shell: powershell
+        run: |
+          $parts = Get-ChildItem "_chatgpt_payload/certificate_maker_v1.2/part_*.txt" | Sort-Object Name
+          if ($parts.Count -eq 0) { throw "Payload chunks not found" }
+          $b64 = ($parts | ForEach-Object { Get-Content $_.FullName -Raw }) -join ''
+          $zipPath = Join-Path $env:RUNNER_TEMP "certificate_maker_v1.2.zip"
+          [IO.File]::WriteAllBytes($zipPath, [Convert]::FromBase64String($b64))
+          $hash = (Get-FileHash $zipPath -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($hash -ne "c9420a8fa3e7530ceea509cb3e18f4009e82ab2b4b8011c42f52ef322ffce5fe") {
+            throw "Payload SHA256 mismatch: $hash"
+          }
+          $extract = Join-Path $env:RUNNER_TEMP "certificate_maker_src"
+          Expand-Archive -Path $zipPath -DestinationPath $extract -Force
+          "CERT_SRC=$extract\certificate_maker_package" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Validate source
+        shell: powershell
+        run: |
+          Set-Location $env:CERT_SRC
+          python -m py_compile certificate_maker.py
+          if (Select-String -Path certificate_maker.py -Pattern '^import zipfile|from openpyxl|load_workbook' -Quiet) {
+            throw "Legacy ZIP/openpyxl runtime path detected"
+          }
+          if (-not (Select-String -Path certificate_maker.py -Pattern 'load_excel_rows_com' -Quiet)) {
+            throw "Excel COM loader missing"
+          }
+          if (-not (Select-String -Path certificate_maker.py -Pattern 'WithWindow=False|MSO_TRUE if settings.keep_powerpoint_visible else MSO_FALSE' -Quiet)) {
+            throw "PowerPoint hidden COM fix missing"
+          }
+
+      - name: Install build dependencies
+        shell: powershell
+        run: |
+          Set-Location $env:CERT_SRC
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Build EXE
+        shell: powershell
+        run: |
+          Set-Location $env:CERT_SRC
+          python -m PyInstaller --noconfirm --clean --onefile --windowed `
+            --name CertificateMaker `
+            --hidden-import pythoncom `
+            --hidden-import pywintypes `
+            --hidden-import win32timezone `
+            --hidden-import win32com.client `
+            --hidden-import win32com.client.dynamic `
+            --hidden-import win32com.client.gencache `
+            --collect-submodules win32com `
+            --add-data "samples;samples" `
+            certificate_maker.py
+          if (-not (Test-Path "dist\CertificateMaker.exe")) { throw "EXE was not created" }
+
+      - name: Assemble artifact
+        shell: powershell
+        run: |
+          Set-Location $env:CERT_SRC
+          $artifact = Join-Path $env:RUNNER_TEMP "CertificateMaker_v1.2.0_Windows_x64"
+          New-Item -ItemType Directory -Force -Path $artifact | Out-Null
+          Copy-Item "dist\CertificateMaker.exe" "$artifact\CertificateMaker.exe"
+          Copy-Item "README.md" "$artifact\README.md"
+          Copy-Item "BUILD_NOTE.txt" "$artifact\BUILD_NOTE.txt"
+          Copy-Item -Recurse "samples" "$artifact\samples"
+          Get-FileHash "$artifact\CertificateMaker.exe" -Algorithm SHA256 | Format-List
+          "ARTIFACT_DIR=$artifact" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: CertificateMaker_v1.2.0_Windows_x64
+          path: ${{ env.ARTIFACT_DIR }}
+          if-no-files-found: error
+          retention-days: 7
