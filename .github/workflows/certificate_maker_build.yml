@@ -1,4 +1,4 @@
-name: Build CertificateMaker v1.2.1 Windows EXE
+name: Build CertificateMaker v1.2.3 Windows EXE
 
 on:
   pull_request:
@@ -21,7 +21,7 @@ jobs:
           python-version: '3.12'
           architecture: 'x64'
 
-      - name: Restore verified source payload
+      - name: Restore verified v1.2.1 source payload
         shell: powershell
         run: |
           $parts = Get-ChildItem "_chatgpt_payload/certificate_maker_v1.2/part_*.txt" | Sort-Object Name
@@ -37,7 +37,7 @@ jobs:
           Expand-Archive -Path $zipPath -DestinationPath $extract -Force
           "CERT_SRC=$extract\certificate_maker_package" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
-      - name: Harden bundled sample filename
+      - name: Normalize bundled sample filename
         shell: powershell
         run: |
           Set-Location $env:CERT_SRC
@@ -56,6 +56,16 @@ jobs:
           p.write_text(s, encoding="utf-8", newline="\n")
           '@ | python -
 
+      - name: Apply v1.2.3 COM export fix
+        shell: powershell
+        run: |
+          $patchParts = Get-ChildItem "_chatgpt_payload/cert_v123_patch_part_*.txt" | Sort-Object Name
+          if ($patchParts.Count -ne 3) { throw "Expected three v1.2.3 patch parts" }
+          $patchPath = Join-Path $env:RUNNER_TEMP "certificate_maker_v123.patch"
+          ($patchParts | ForEach-Object { Get-Content $_.FullName -Raw }) -join '' | Set-Content -LiteralPath $patchPath -Encoding utf8NoBOM -NoNewline
+          Set-Location $env:CERT_SRC
+          git apply -p0 --whitespace=nowarn $patchPath
+
       - name: Validate source
         shell: powershell
         run: |
@@ -64,15 +74,15 @@ jobs:
           if (Select-String -Path certificate_maker.py -Pattern '^import zipfile|from openpyxl|load_workbook' -Quiet) {
             throw "Legacy ZIP/openpyxl runtime path detected"
           }
-          if (-not (Select-String -Path certificate_maker.py -Pattern 'load_excel_rows_com' -Quiet)) {
-            throw "Excel COM loader missing"
-          }
-          if (-not (Select-String -Path certificate_maker.py -Pattern 'WithWindow=False|MSO_TRUE if settings.keep_powerpoint_visible else MSO_FALSE' -Quiet)) {
-            throw "PowerPoint hidden COM fix missing"
-          }
-          if (-not (Select-String -Path certificate_maker.py -Pattern 'APP_VERSION = "1.2.1"' -Quiet)) {
-            throw "Version patch missing"
-          }
+          if (-not (Select-String -Path certificate_maker.py -Pattern 'load_excel_rows_com' -Quiet)) { throw "Excel COM loader missing" }
+          if (-not (Select-String -Path certificate_maker.py -Pattern 'APP_VERSION = "1.2.3"' -Quiet)) { throw "Version patch missing" }
+          if (-not (Select-String -Path certificate_maker.py -Pattern 'Presentations.Open\(' -Quiet)) { throw "PowerPoint COM open missing" }
+          if (-not (Select-String -Path certificate_maker.py -Pattern 'MSO_TRUE\)' -Quiet)) { throw "WithWindow=True path missing" }
+          if (-not (Select-String -Path certificate_maker.py -Pattern 'PP_WINDOW_MINIMIZED' -Quiet)) { throw "Minimized background mode missing" }
+          if (-not (Select-String -Path certificate_maker.py -Pattern 'ExportAsFixedFormat' -Quiet)) { throw "PDF ExportAsFixedFormat missing" }
+          if (-not (Select-String -Path certificate_maker.py -Pattern '\.Export\(str\(png_path\.resolve\(\)\), "PNG"' -Quiet)) { throw "PNG Slide.Export missing" }
+          if (-not (Select-String -Path certificate_maker.py -Pattern 'SaveCopyAs' -Quiet)) { throw "PPTX SaveCopyAs missing" }
+          if (Select-String -Path certificate_maker.py -Pattern 'presentation\.SaveAs\(' -Quiet) { throw "Legacy Presentation.SaveAs still present" }
           if (-not (Test-Path "samples\template.pptx")) { throw "ASCII template resource missing" }
           if (-not (Test-Path "samples\data.xlsx")) { throw "Excel sample missing" }
 
@@ -104,7 +114,7 @@ jobs:
         shell: powershell
         run: |
           Set-Location $env:CERT_SRC
-          $artifact = Join-Path $env:RUNNER_TEMP "CertificateMaker_v1.2.1_Windows_x64"
+          $artifact = Join-Path $env:RUNNER_TEMP "CertificateMaker_v1.2.3_Windows_x64"
           New-Item -ItemType Directory -Force -Path $artifact | Out-Null
           Copy-Item "dist\CertificateMaker.exe" "$artifact\CertificateMaker.exe"
           Copy-Item -Recurse "samples" "$artifact\samples"
@@ -114,7 +124,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: CertificateMaker_v1.2.1_Windows_x64
+          name: CertificateMaker_v1.2.3_Windows_x64
           path: ${{ env.ARTIFACT_DIR }}
           if-no-files-found: error
           retention-days: 7
