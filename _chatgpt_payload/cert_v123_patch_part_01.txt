@@ -1,0 +1,107 @@
+HANDOUT_HORIZONTAL_FIRST,
++        PP_PRINT_OUTPUT_SLIDES,
++        MSO_FALSE,
++        None,
++        PP_PRINT_ALL,
++        "",
++        False,
++        False,
++        True,
++        True,
++        False,
++    )
++    ensure_export_created(pdf_path, "PDF")
++
++
++def export_png_com(presentation, output_dir: Path, base_name: str, width: Optional[int], height: Optional[int], log) -> None:
++    """각 슬라이드를 Slide.Export로 직접 PNG 파일로 내보냅니다."""
++    png_w, png_h = calc_png_size(presentation, width, height)
++    slide_count = int(presentation.Slides.Count)
++    for slide_idx in range(1, slide_count + 1):
++        if slide_count == 1:
++            png_name = f"{base_name}.png"
++        else:
++            png_name = f"{base_name}_slide{slide_idx:02d}.png"
++        png_path = unique_path(output_dir / png_name)
++        presentation.Slides(slide_idx).Export(str(png_path.resolve()), "PNG", png_w, png_h)
++        ensure_export_created(png_path, f"PNG slide {slide_idx}")
++        log(f"  PNG 저장: {png_path.name} ({png_w}x{png_h}) [Slide.Export]")
++
++
++def export_pptx_copy_com(presentation, pptx_path: Path) -> None:
++    """열려 있는 프레젠테이션의 상태/경로를 바꾸지 않고 PPTX 복사본을 저장합니다."""
++    presentation.SaveCopyAs(str(pptx_path.resolve()), PP_SAVE_AS_OPENXML_PRESENTATION, MSO_FALSE)
++    ensure_export_created(pptx_path, "PPTX")
++
++
+ def export_for_row(ppt_app, settings: JobSettings, row_map: Dict[str, str], row_number: int, log) -> None:
+     presentation = None
++    format_errors: List[str] = []
+     try:
+-        # FileName, ReadOnly, Untitled, WithWindow
++        # 안정성 우선: 표시 여부와 관계없이 실제 DocumentWindow를 생성합니다.
++        # WithWindow=False는 일부 Office/DRM 환경에서 Save/Export 예외를 재현하므로 사용하지 않습니다.
+         try:
+             presentation = ppt_app.Presentations.Open(
+-                str(settings.template_path.resolve()), MSO_TRUE, MSO_FALSE,
+-                MSO_TRUE if settings.keep_powerpoint_visible else MSO_FALSE
++                str(settings.template_path.resolve()), MSO_TRUE, MSO_FALSE, MSO_TRUE
+             )
++            if settings.keep_powerpoint_visible:
++                try:
++                    ppt_app.WindowState = PP_WINDOW_NORMAL
++                except Exception:
++                    pass
++            else:
++                minimize_powerpoint_window(ppt_app, presentation)
++                log("  PowerPoint 백그라운드 최소화 모드: WithWindow=True + ppWindowMinimized")
+         except Exception as e:
+-            raise RuntimeError(f"PowerPoint COM으로 템플릿을 열지 못했습니다: {e}") from e
++            raise RuntimeError(f"PowerPoint COM으로 템플릿을 열지 못했습니다: {describe_com_error(e)}") from e
+         replace_presentation(presentation, row_map)
+ 
+         raw_base = replace_tokens(settings.filename_pattern, row_map, leave_unknown=False)
+         base_name = sanitize_filename(raw_base, fallback=f"certificate_{row_number:04d}")
++        output_dir = settings.output_dir.resolve()
+ 
+-        if settings.export_pptx:
+-            pptx_path = unique_path(settings.output_dir / f"{base_name}.pptx")
+-            presentation.SaveAs(str(pptx_path), PP_SAVE_AS_OPENXML_PRESENTATION)
+-            log(f"  PPTX 저장: {pptx_path.name}")
+-
++        # 각 출력 형식을 완전히 독립시킵니다. PDF가 실패해도 PNG/PPTX는 계속 시도합니다.
++        # 또한 SaveAs로 프레젠테이션의 현재 파일 상태를 바꾸지 않도록 PPTX는 SaveCopyAs를 사용합니다.
+         if settings.export_pdf:
+-            pdf_path = unique_path(settings.output_dir / f"{base_name}.pdf")
+-            presentation.SaveAs(str(pdf_path), PP_SAVE_AS_PDF)
+-            log(f"  PDF 저장: {pdf_path.name}")
++            pdf_path = unique_path(output_dir / f"{base_name}.pdf")
++            try:
++                log(f"  PDF 출력 시작: {pdf_path.name} [ExportAsFixedFormat]")
++                export_pdf_com(presentation, pdf_path)
++                log(f"  PDF 저장: {pdf_path.name} [ExportAsFixedFormat]")
++            except Exception as e:
++                detail = describe_com_error(e)
++                format_errors.append(f"PDF: {detail}")
++                log(f"  PDF 오류: {detail}")
+ 
+         if settings.export_png:
+-            png_w, png_h = calc_png_size(presentation, settings.png_width, settings.png_height)
+-            slide_count = presentation.Slides.Count
+-            for slide_idx in range(1, slide_count + 1):
+-                if slide_count == 1:
+-                    png_name = f"{base_name}.png"
+-                else:
+-                    png_name = f"{base_name}_slide{slide_idx:02d}.png"
+-                png_path = unique_path(settings.output_dir / png_name)
+-                presentation.Slides(slide_idx).Export(str(png_path), "PNG", png_w, png_h)
+-                log(f"  PNG 저장: {png_path.name} ({png_w}x{png_h})")
++            try:
++                log("  PNG 출력 시작 [Slide.Export]")
++                export_png_com(
++                    presentation, output_dir, base_name,
++                    settings.png_width, settings.png_height, log
++                )
++            except Exception as e:
++                detail = describe_com_error(e)
++                format_errors.append(f"PNG: {detai
